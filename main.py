@@ -1,4 +1,3 @@
-from xml.parsers.expat import model
 from fastapi import FastAPI, Request, BackgroundTasks
 import requests
 import google.generativeai as genai
@@ -6,7 +5,6 @@ import json
 import database  # Importa o módulo database.py para inicializar o banco de dados
 
 app = FastAPI()
-
 database.inicializar_banco()  # Inicializa o banco de dados ao iniciar a aplicação
 
 # -------------- CONFIGURAÇÃO --------------
@@ -23,6 +21,9 @@ modelo = genai.GenerativeModel(
 
 MODO_TESTE = True
 
+# "Estacionamento" temporário: guarda o JSON da IA até o usuário apertar o botão "Salvar"
+despesas_pendentes = {}
+
 @app.post("/webhook")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     update = await request.json()
@@ -30,6 +31,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     # Passa apenas update["message"] para rodar em segundo plano
     if "message" in update:
         background_tasks.add_task(processar_mensagem, update["message"])
+
+    # O Telegram envia clique de botões aqui (Callback Query)
+    elif "callback_query" in update:
+        background_tasks.add_task(processar_clique_botao, update["callback_query"])
 
     # Responde 200 OK imediatamente para evitar loop no Telegram
     return {"status": "ok"}
@@ -79,19 +84,67 @@ def processar_mensagem(mensagem: dict):
                 f"🏷️ *Categoria:* {dados_json.get('categoria', 'Outros')}\n\n"
                 f"⚙️ _Objeto salvo em memória pronto para o banco de dados._"
             )
+
+            # Monta os botõess que aparecerão embaixo da mensagem
+            botoes = {
+                "inline_keyboard": [
+                    [
+                        {"text": "💾 Salvar", "callback_data": "acao_salvar"},
+                        {"text": "❌ Cancelar", "callback_data": "acao_cancelar"}
+                    ]
+                ]
+            }
+
             enviar_mensagem(chat_id, resposta, parse_mode="Markdown")
 
         except Exception as e:
             enviar_mensagem(chat_id, f"❌ Ocorreu um erro ao processar o arquivo: {e}")
 
-def enviar_mensagem(chat_id: int, texto: str, parse_mode: str = None):
+def processar_clique_botao(callback_query: dict):
+    """ Lida com a ação do usuário ao clicar em 'Salvar' ou 'Cancelar'."""
+    chat_id = callback_query["message"]["chat"]["id"]
+    mensagem_id = callback_query["message"]["message_id"]
+    acao = callback_query["data"] # Pode ser "acao_salvar" ou "acao_cancelar"
+
+    # Verifica se os dados ainda estão na memória
+    if chat_id not in despesas_pendentes:
+        editar_mensagem(chat_id, mensagem_id, "⚠️ Essa nota já foi processada ou expirou.")
+        return
+
+    if acao == "acao_salvar":
+        dados_json = despesas_pendentes[chat_id]
+        database.salvar_despesa(chat_id, dados_json)
+        editar_mensagem(chat_id, mensagem_id, "💾 Nota salva com sucesso no banco de dados!")
+
+    elif acao == "acao_cancelar":
+        editar_mensagem(chat_id, mensagem_id, "❌ Nota cancelada.")
+        del despesas_pendentes[chat_id]  # Remove da memória após cancelar
+
+    # Remove da fila de espera independente da ação
+    del despesas_pendentes[chat_id]
+
+def enviar_mensagem(chat_id: int, texto: str, parse_mode: str = None, reply_markup: dict = None):
     """Função auxiliar para o bot responder ao usuário."""
     url = f"{TELEGRAM_URL}/sendMessage"
     payload = {"chat_id": chat_id, "text": texto}
     if parse_mode:
         payload["parse_mode"] = parse_mode
+    if reply_markup:
+            payload["reply_markup"] = reply_markup
     requests.post(url, json=payload)
 
+def editar_mensagem(chat_id: int, message_id: int, texto: str, parse_mode: str = None):
+    """Apaga os botões e altera o texto da mensagem antiga para confirmar a ação."""
+    url = f"{TELEGRAM_URL}/editMessageText"
+    payload = {
+        "chat_id": chat_id, 
+        "message_id": message_id, 
+        "text": texto,
+        "reply_markup": {"inline_keyboard": []} # Remove os botões
+    }
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    requests.post(url, json=payload)
 
 def baixar_arquivo_telegram(file_id: str) -> bytes:
     """Faz o download do arquivo em formato binário (bytes)."""
