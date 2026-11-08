@@ -38,3 +38,34 @@ def salvar_despesa(chat_id: int, dados_json: dict):
             dados_json.get("categoria")
         ))
         conn.commit()
+
+def gerar_relatorio(chat_id: int) -> str:
+    """ Soma as despesas do usuário por categoria e retorna um texto formatado. """
+    with sqlite3.connect(NOME_BANCO) as conn:
+        cursor = conn.cursor()
+
+        # O SQL SUM() soma os valores e o GRUPO BY agrupa por categoria
+        cursor.execute("""
+            SELECT categoria, SUM(valor_total)
+            FROM despesas
+            WHERE chat_id = ?
+            GROUP BY categoria
+        """, (chat_id,))
+
+        resultados = cursor.fetchall()
+
+        if not resultados:
+            return "Nenhuma despesa registrada."
+
+        relatorio = "📊 *Relatório de Despesas por Categoria:*\n\n"
+        total_geral = 0.0
+
+        for categoria, total in resultados:
+            total_formatado = f"R$ {total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            relatorio += f"🏷️ *{categoria}:* {total_formatado}\n"
+            total_geral += total
+
+        total_geral_format = f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        relatorio += f"\n💰 *Total Geral:* {total_geral_format}"
+
+        return relatorio
