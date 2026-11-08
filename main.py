@@ -1,11 +1,13 @@
 from xml.parsers.expat import model
-
 from fastapi import FastAPI, Request, BackgroundTasks
 import requests
 import google.generativeai as genai
 import json
+import database  # Importa o módulo database.py para inicializar o banco de dados
 
 app = FastAPI()
+
+database.inicializar_banco()  # Inicializa o banco de dados ao iniciar a aplicação
 
 # -------------- CONFIGURAÇÃO --------------
 TOKEN_TELEGRAM = "9219114965:AAEQ5TLAiz2NoQFdaKwKHJuzOejSA2bUjo8"
