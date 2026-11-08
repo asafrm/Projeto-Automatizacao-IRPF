@@ -1,6 +1,9 @@
+from xml.parsers.expat import model
+
 from fastapi import FastAPI, Request, BackgroundTasks
 import requests
 import google.generativeai as genai
+import json
 
 app = FastAPI()
 
@@ -10,7 +13,13 @@ TELEGRAM_URL = f"https://api.telegram.org/bot{TOKEN_TELEGRAM}"
 
 CHAVE_GEMINI = "AQ.Ab8RN6K-Kcb4flwH-8FD-IzqPh6XQh8xc0MdYbHiIMGUQOV64A"
 genai.configure(api_key=CHAVE_GEMINI)
-modelo = genai.GenerativeModel("gemini-3.8-flash") # Modelo rápido com suporte a imagens
+# Força a resposta do modelo a ser sempre um JSON válido
+modelo = genai.GenerativeModel(
+    model_name="gemini-3.8-flash",
+    generation_config={"response_mime_type": "application/json"}
+) 
+
+MODO_TESTE = True
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
@@ -51,19 +60,34 @@ def processar_mensagem(mensagem: dict):
 
         try:
             dados_arquivo = baixar_arquivo_telegram(file_id)
-            dados_extraidos = extrair_dados_com_ia(dados_arquivo, mime_type)
 
-            resposta = f"✅ Dados extraídos:\n{dados_extraidos}"
-            enviar_mensagem(chat_id, resposta)
+            # Agora retorna um dicionário Python estruturado (dict)
+            dados_json = extrair_dados_com_ia(dados_arquivo, mime_type)
+
+            # Formatar o valor para exibição amigável no padrão brasileiro
+            valor_num = dados_json.get("valor_total")
+            valor_formatado = f"R$ {valor_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if isinstance(valor_num, (int, float)) else "Não identificado"            
+
+            resposta = (
+                f"✅ *Dados Extraídos (JSON Estruturado):*\n\n"
+                f"🏥 *Emissor:* {dados_json.get('emissor', 'Não identificado')}\n"
+                f"📄 *Documento:* {dados_json.get('documento_emissor', 'Não identificado')}\n"
+                f"📅 *Data:* {dados_json.get('data_emissao', 'Não identificado')}\n"
+                f"💰 *Valor:* {valor_formatado}\n"
+                f"🏷️ *Categoria:* {dados_json.get('categoria', 'Outros')}\n\n"
+                f"⚙️ _Objeto salvo em memória pronto para o banco de dados._"
+            )
+            enviar_mensagem(chat_id, resposta, parse_mode="Markdown")
 
         except Exception as e:
             enviar_mensagem(chat_id, f"❌ Ocorreu um erro ao processar o arquivo: {e}")
 
-
-def enviar_mensagem(chat_id: int, texto: str):
-    """Função auxiliar para o seu bot responder ao usuário."""
+def enviar_mensagem(chat_id: int, texto: str, parse_mode: str = None):
+    """Função auxiliar para o bot responder ao usuário."""
     url = f"{TELEGRAM_URL}/sendMessage"
     payload = {"chat_id": chat_id, "text": texto}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     requests.post(url, json=payload)
 
 
@@ -81,41 +105,34 @@ def baixar_arquivo_telegram(file_id: str) -> bytes:
 
 def extrair_dados_com_ia(dados_arquivo: bytes, mime_type: str) -> str:
     """Envia o arquivo e o prompt para o Gemini."""
+
+    # Simulação para desenvolvimento sem consumir cota da API
+    if MODO_TESTE:
+        return {
+            "emissor": "Clínica Médica Brasília S/A (Simulado)",
+            "documento_emissor": "12.345.678/0001-99",
+            "data_emissao": "08/11/2026",
+            "valor_total": 450.00,
+            "categoria": "Saúde"
+        }
+    
     prompt = """
-    Você é um **assistente especializado em auditoria fiscal do Imposto de Renda Pessoa Física (IRPF) brasileiro**.
+    Você é um assistente especializado em auditoria fiscal do Imposto de Renda Pessoa Física (IRPF) brasileiro.
+    Analise cuidadosamente a nota fiscal ou recibo fornecido e extraia os dados do prestador do serviço (nunca do paciente/cliente).
 
-    Sua função é analisar notas fiscais, recibos e comprovantes de pagamento, identificando e extraindo informações relevantes para a declaração do IRPF.
+    Retorne EXATAMENTE um objeto JSON seguindo este esquema:
+    {
+        "emissor": "Nome completo da clínica, empresa ou profissional, ou 'Não identificado'",
+        "documento_emissor": "CNPJ ou CPF do prestador formatado, ou 'Não identificado'",
+        "data_emissao": "Data de emissão no formato DD/MM/AAAA, ou 'Não identificado'",
+        "valor_total": 0.00,
+        "categoria": "Saúde, Educação ou Outros"
+    }
 
-    Analise cuidadosamente o documento fornecido e extraia os seguintes dados:
-
-    - **Emissor:** Nome completo da clínica, empresa ou profissional que prestou o serviço.
-    - **CNPJ ou CPF do emissor:** Identificação fiscal do prestador do serviço.
-    - **Data de emissão:** Data em que a nota fiscal ou recibo foi emitido, no formato DD/MM/AAAA.
-    - **Valor total:** Valor total do serviço ou despesa, no formato R$ 0.000,00.
-    - **Categoria provável:** Classifique a despesa em uma das seguintes categorias:
-      - Saúde: consultas médicas, odontológicas, psicológicas, exames, hospitais e demais serviços de saúde.
-      - Educação: mensalidades escolares, ensino superior, educação profissional e demais despesas educacionais potencialmente dedutíveis.
-      - Outros: despesas que não se enquadrem nas categorias anteriores.
-
-    ### Regras de análise e validação
-
-    1. Identifique exclusivamente os dados do emissor/prestador do serviço. Não confunda com os dados do paciente, cliente ou tomador do serviço.
-    2. Não confunda a data de emissão com a data de prestação do serviço ou de pagamento.
-    3. Considere o valor total efetivamente informado no documento, sem somar valores já incluídos no total.
-    4. Não deduza, invente ou presuma informações que não estejam claramente presentes no documento.
-    5. Caso uma informação não esteja disponível ou não possa ser lida com segurança, retorne exatamente: "Não identificado".
-    6. A classificação deve considerar a natureza do serviço ou produto descrito no documento, e não apenas o nome do estabelecimento.
-    7. Não considere automaticamente que uma despesa classificada como Saúde ou Educação seja dedutível no IRPF. A classificação é apenas indicativa e não substitui a análise das regras fiscais da Receita Federal.
-
-    ### Formato obrigatório de resposta
-
-    Emissor: 
-    CNPJ ou CPF do emissor:
-    Data da emissão:
-    Valor total:
-    Categoria provável:
-
-    **IMPORTANTE:** Retorne exclusivamente os cinco campos solicitados, sem introduções, explicações, observações ou comentários adicionais.
+    Regras:
+    - 'valor_total' deve ser estritamente um número decimal (float) usando ponto como separador (ex: 1250.50). Se não encontrar, retorne null.
+    - 'categoria' deve ser estritamente uma das três opções: "Saúde", "Educação" ou "Outros".
+    - Não deduza ou invente dados ausentes.
     """
 
     # Empacota os bytes e o mime_type (funciona tanto para image/jpeg quanto para application/pdf)
@@ -125,4 +142,7 @@ def extrair_dados_com_ia(dados_arquivo: bytes, mime_type: str) -> str:
     }
 
     resposta = modelo.generate_content([prompt, blob_arquivo])
-    return resposta.text
+    
+    # Converte a string JSON devolvida pela IA em um dicionário real do Python
+    dados_estruturados = json.loads(resposta.text)
+    return dados_estruturados
