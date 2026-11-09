@@ -71,7 +71,8 @@ def processar_mensagem(mensagem: dict):
                 "🛠️ **Meus Comandos:**\n"
                 "📊 /relatorio - Ver o total acumulado por categoria\n"
                 "📥 /exportar - Baixar sua base de dados em planilha Excel\n"
-                "🗑️ /limpar - Apagar todo o seu histórico do sistema\n\n"
+                "🗑️ /limpar - Apagar todo o seu histórico do sistema\n"
+                "🌐 /painel - Seu Painel Exclusivo\n\n"
                 "🚀 *Para começar, me envie o seu primeiro comprovante!*"
             ) 
             enviar_mensagem(chat_id, mensagem_boas_vindas, parse_mode="Markdown")
@@ -93,7 +94,7 @@ def processar_mensagem(mensagem: dict):
                 "🛠️ **Meus Comandos:**\n"
                 "📊 /relatorio - Ver o total acumulado por categoria\n"
                 "📥 /exportar - Baixar sua base de dados em planilha Excel\n"
-                "🗑️ /limpar - Apagar todo o seu histórico do sistema\n\n"
+                "🗑️ /limpar - Apagar todo o seu histórico do sistema\n"
                 "🌐 /painel - Seu Painel Exclusivo\n\n"
                 "🚀 *Para começar, me envie o seu primeiro comprovante!*"
             )
