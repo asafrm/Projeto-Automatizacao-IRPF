@@ -30,7 +30,7 @@ modelo = genai.GenerativeModel(
     generation_config={"response_mime_type": "application/json"}
 )
 
-MODO_TESTE = False
+# MODO_TESTE = False
 
 # "Estacionamento" temporário: guarda o JSON da IA até o usuário apertar o botão "Salvar"
 despesas_pendentes = {}
@@ -230,14 +230,14 @@ def baixar_arquivo_telegram(file_id: str) -> bytes:
 
 
 def extrair_dados_com_ia(dados_arquivo: bytes, mime_type: str) -> dict:
-    if MODO_TESTE:
+    """ if MODO_TESTE:
         return {
             "emissor": "Clínica Médica Brasília S/A",
             "documento_emissor": "12.345.678/0001-99",
             "data_emissao": "08/11/2026",
             "valor_total": 450.00,
             "categoria": "Saúde"
-        }
+        }"""
 
     prompt = """
     Você é um assistente especializado em auditoria fiscal do Imposto de Renda Pessoa Física (IRPF) brasileiro.
