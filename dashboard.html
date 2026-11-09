@@ -146,12 +146,25 @@ function normalize(r){
 /* ================= Estado ================= */
 const state = { all: [], period: "all", cat: "all", q: "", sort: {key:"data", dir:"desc"}, chat: "all", loaded: false, error: null };
 
+// Captura o ID do usuário diretamente do link gerado pelo Telegram
+const params = new URLSearchParams(window.location.search);
+const USER_ID = params.get('user');
+
 /* ================= Dados ================= */
 async function load(silent){
+  // Se alguém tentar abrir o site sem o link do Telegram, bloqueia o acesso
+  if(!USER_ID) {
+      state.error = "Acesso Negado. Use o comando /painel no Telegram para gerar seu link seguro.";
+      state.loaded = true;
+      render();
+      return;
+  }
+
   const btn = $("#btnRefresh");
   if(!silent) btn.classList.add("spin");
   try{
-    const res = await fetch("/api/despesas", {headers:{"Accept":"application/json"}});
+    // Puxa os dados apenas deste cliente específico
+    const res = await fetch(`/api/despesas/${USER_ID}`, {headers:{"Accept":"application/json"}});
     if(!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
     state.all = (Array.isArray(json) ? json : []).map(normalize);
@@ -463,25 +476,24 @@ function currentChat(){
   return ids.length === 1 ? ids[0] : null;
 }
 async function exportXlsx(){
-  const id = currentChat();
-  if(id == null){ toast("Selecione um usuário para exportar"); return; }
+  if(!USER_ID) return;
   const btn = $("#btnXlsx"); btn.disabled = true;
   try{
-    const res = await fetch(`/api/exportar/${encodeURIComponent(id)}`);
+    const res = await fetch(`/api/exportar/${USER_ID}`);
     if(!res.ok) throw new Error("HTTP " + res.status);
     const blob = await res.blob();
-    const a = Object.assign(document.createElement("a"), {href:URL.createObjectURL(blob), download:`despesas_irpf_${id}.xlsx`});
+    const a = Object.assign(document.createElement("a"), {href:URL.createObjectURL(blob), download:`despesas_irpf_${USER_ID}.xlsx`});
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast("Planilha gerada");
   }catch(e){ toast("Não foi possível gerar a planilha"); }
   finally{ btn.disabled = false; }
 }
+
 async function openReport(){
-  const id = currentChat();
-  if(id == null){ toast("Selecione um usuário para ver o relatório"); return; }
+  if(!USER_ID) return;
   const btn = $("#btnReport"); btn.disabled = true;
   try{
-    const res = await fetch(`/api/relatorio/${encodeURIComponent(id)}`);
+    const res = await fetch(`/api/relatorio/${USER_ID}`);
     if(!res.ok) throw new Error("HTTP " + res.status);
     const txt = (await res.text()).replace(/\*/g, "");
     $("#modalBody").innerHTML = `<div class="modal">

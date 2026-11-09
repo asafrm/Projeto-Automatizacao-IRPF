@@ -94,6 +94,7 @@ def processar_mensagem(mensagem: dict):
                 "📊 /relatorio - Ver o total acumulado por categoria\n"
                 "📥 /exportar - Baixar sua base de dados em planilha Excel\n"
                 "🗑️ /limpar - Apagar todo o seu histórico do sistema\n\n"
+                "🌐 /painel - Seu Painel Exclusivo\n\n"
                 "🚀 *Para começar, me envie o seu primeiro comprovante!*"
             )
             enviar_mensagem(chat_id, mensagem_boas_vindas, parse_mode="Markdown")
@@ -115,6 +116,10 @@ def processar_mensagem(mensagem: dict):
                     os.remove(caminho_xlsx)
             except Exception as e:
                 enviar_mensagem(chat_id, f"❌ Erro interno ao gerar o XLSX: {e}")
+        elif texto == "/painel":
+            # Passa o chat_id do usuário na URL de forma invisível
+            link = f"http://127.0.0.1:8000/dashboard?user={chat_id}"
+            enviar_mensagem(chat_id, f"🌐 *Seu Painel Exclusivo:*\n[Clique aqui para acessar o seu Dashboard]({link})", parse_mode="Markdown")
                 
         # Se for um texto que não é comando, avisa
         elif not texto.startswith("/"):
@@ -265,17 +270,16 @@ def abrir_dashboard():
     except FileNotFoundError:
         return "<h1>Erro: Arquivo dashboard.html não encontrado.</h1>"
 
-@app.get("/api/despesas")
-def api_listar_despesas():
-    """Fornece os dados do banco em formato JSON para o painel visual."""
+@app.get("/api/despesas/{chat_id}")
+def api_listar_despesas_usuario(chat_id: int):
+    """Fornece os dados do banco apenas para o usuário logado via link mágico."""
     with sqlite3.connect(database.NOME_BANCO) as conexao:
-        # Permite acessar as colunas pelo nome em vez de índice numérico
         conexao.row_factory = sqlite3.Row 
         cursor = conexao.cursor()
-        cursor.execute("SELECT id, chat_id, emissor, documento_emissor, data_emissao, valor_total, categoria FROM despesas")
-        resultados = cursor.fetchall()
         
-        # Converte as linhas do banco para uma lista de dicionários Python
+        # O filtro WHERE chat_id = ? garante que o cliente A nunca veja os dados do cliente B
+        cursor.execute("SELECT id, chat_id, emissor, documento_emissor, data_emissao, valor_total, categoria FROM despesas WHERE chat_id = ?", (chat_id,))
+        resultados = cursor.fetchall()
         return [dict(linha) for linha in resultados]
 
 
