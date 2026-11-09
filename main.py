@@ -55,16 +55,17 @@ def processar_mensagem(mensagem: dict):
             database.limpar_dados(chat_id)
             enviar_mensagem(chat_id, "🗑️ *Todos os seus dados foram apagados com sucesso!*", parse_mode="Markdown")
         elif texto == "/exportar":
-            enviar_mensagem(chat_id, "⏳ Gerando sua planilha...")
+            enviar_mensagem(chat_id, "⏳ Gerando sua planilha Excel...")
             try:
-                caminho_csv = database.gerar_csv(chat_id)
-                enviar_documento(chat_id, caminho_csv)
+                # Chama a nova função XLSX
+                caminho_xlsx = database.gerar_xlsx(chat_id)
+                enviar_documento(chat_id, caminho_xlsx)
                 
                 # Remove a planilha do seu computador para não acumular lixo
-                if os.path.exists(caminho_csv):
-                    os.remove(caminho_csv)
+                if os.path.exists(caminho_xlsx):
+                    os.remove(caminho_xlsx)
             except Exception as e:
-                enviar_mensagem(chat_id, f"❌ Erro interno ao gerar o CSV: {e}")
+                enviar_mensagem(chat_id, f"❌ Erro interno ao gerar o XLSX: {e}")
                 
         else:
             enviar_mensagem(chat_id, "Comando não reconhecido. Envie uma nota fiscal ou digite /relatorio.")

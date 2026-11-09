@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime
-import csv
+import openpyxl
 
 NOME_BANCO = "imposto_renda.db"
 
@@ -82,8 +82,8 @@ def limpar_dados(chat_id: int):
         cursor.execute("DELETE FROM despesas WHERE chat_id = ?", (chat_id,))
         conexao.commit()
 
-def gerar_csv(chat_id: int) -> str:
-    """Gerar um arquivo CSV com as despesas do usuário e retorna o caminho do arquivo."""
+def gerar_xlsx(chat_id: int) -> str:
+    """Gera um arquivo Excel (XLSX) com as despesas do usuário e retorna o caminho do arquivo."""
     with sqlite3.connect(NOME_BANCO) as conexao:
         cursor = conexao.cursor()
         cursor.execute("""
@@ -93,31 +93,23 @@ def gerar_csv(chat_id: int) -> str:
         """, (chat_id,))
         resultados = cursor.fetchall()
 
-    caminho_arquivo = f"despesas_irpf_{chat_id}.csv"
+    caminho_arquivo = f"despesas_irpf_{chat_id}.xlsx"
 
-    with open(caminho_arquivo, mode='w', newline='', encoding='utf-8-sig') as arquivo_csv:
-        escritor = csv.writer(arquivo_csv, delimiter=';')
-        escritor.writerow(['Emissor', 'CNPJ/CPF', 'Data da Emissão', 'Valor Total', 'Categoria', 'Data de Registro'])
+    # Cria a estrutura do arquivo Excel
+    planilha_excel = openpyxl.Workbook()
+    aba_ativa = planilha_excel.active
+    aba_ativa.title = "Despesas IRPF"
 
-        for linha in resultados:
-            linha_formatada = list(linha)
-            linha_formatada[3] = str(linha_formatada[3]).replace('.', ',')
+    # Insere o cabeçalho na primeira linha
+    aba_ativa.append(['Emissor', 'CNPJ/CPF', 'Data da Emissão', 'Valor Total', 'Categoria', 'Data de Registro'])
+
+    # Insere os dados linha por linha
+    for linha in resultados:
+        # Como o Excel lê XLSX de forma inteligente, passamos a linha pura.
+        # O banco já devolve o valor_total como um float (decimal real), e o Excel reconhece automaticamente!
+        aba_ativa.append(list(linha))
             
-            escritor.writerow(linha_formatada)
-            
-    return caminho_arquivo
-
-    #Criando o arquivo CSV
-    with open(caminho_arquivo, mode='w', newline='', encoding='utf-8-sig') as arquivo_csv:
-        #Usamos o delimitados ';' para o Excel abrir colunas automaticamento no Brasil
-        escritor = csv.writer(arquivo_csv, delimiter=';')
-
-        #Cabeçalho da planilha
-        escritor.writerow(['Emissor', 'CNPJ/CPF', 'Data da Emissão', 'Valor Total', 'Categoria', 'Data de Registro'])
-
-        #Escreve os dados
-        for linha in resultados:
-            linha_formatada = list(linha)
-            #Troca o ponto do banco de dados por vírgula
-            linha_formatada[3] = str(linha_formatada[3]).replace('.', ',')
+    # Salva o arquivo no disco
+    planilha_excel.save(caminho_arquivo)
+    
     return caminho_arquivo
