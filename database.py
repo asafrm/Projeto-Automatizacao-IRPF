@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime
+import csv
 
 NOME_BANCO = "imposto_renda.db"
 
@@ -72,3 +73,51 @@ def gerar_relatorio(chat_id: int) -> str:
         relatorio += f"\n💵 *Total Geral:* {total_geral_format}"
         
         return relatorio
+
+def limpar_dados(chat_id: int):
+    """Apaga todos os registros de um usuário específico."""
+    with sqlite3.connect(NOME_BANCO) as conexao:
+        cursor = conexao.cursor()
+        # CORREÇÃO: Adicionada a vírgula após chat_id (chat_id,)
+        cursor.execute("DELETE FROM despesas WHERE chat_id = ?", (chat_id,))
+        conexao.commit()
+
+def gerar_csv(chat_id: int) -> str:
+    """Gerar um arquivo CSV com as despesas do usuário e retorna o caminho do arquivo."""
+    with sqlite3.connect(NOME_BANCO) as conexao:
+        cursor = conexao.cursor()
+        cursor.execute("""
+            SELECT emissor, documento_emissor, data_emissao, valor_total, categoria, data_registro
+            FROM despesas
+            WHERE chat_id = ?
+        """, (chat_id,))
+        resultados = cursor.fetchall()
+
+    caminho_arquivo = f"despesas_irpf_{chat_id}.csv"
+
+    with open(caminho_arquivo, mode='w', newline='', encoding='utf-8-sig') as arquivo_csv:
+        escritor = csv.writer(arquivo_csv, delimiter=';')
+        escritor.writerow(['Emissor', 'CNPJ/CPF', 'Data da Emissão', 'Valor Total', 'Categoria', 'Data de Registro'])
+
+        for linha in resultados:
+            linha_formatada = list(linha)
+            linha_formatada[3] = str(linha_formatada[3]).replace('.', ',')
+            
+            escritor.writerow(linha_formatada)
+            
+    return caminho_arquivo
+
+    #Criando o arquivo CSV
+    with open(caminho_arquivo, mode='w', newline='', encoding='utf-8-sig') as arquivo_csv:
+        #Usamos o delimitados ';' para o Excel abrir colunas automaticamento no Brasil
+        escritor = csv.writer(arquivo_csv, delimiter=';')
+
+        #Cabeçalho da planilha
+        escritor.writerow(['Emissor', 'CNPJ/CPF', 'Data da Emissão', 'Valor Total', 'Categoria', 'Data de Registro'])
+
+        #Escreve os dados
+        for linha in resultados:
+            linha_formatada = list(linha)
+            #Troca o ponto do banco de dados por vírgula
+            linha_formatada[3] = str(linha_formatada[3]).replace('.', ',')
+    return caminho_arquivo

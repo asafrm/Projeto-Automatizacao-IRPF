@@ -3,6 +3,7 @@ import requests
 import google.generativeai as genai
 import json
 import database
+import os
 
 app = FastAPI()
 database.inicializar_banco()
@@ -50,6 +51,21 @@ def processar_mensagem(mensagem: dict):
         elif texto == "/relatorio":
             relatorio = database.gerar_relatorio(chat_id)
             enviar_mensagem(chat_id, relatorio, parse_mode="Markdown")
+        elif texto == "/limpar":
+            database.limpar_dados(chat_id)
+            enviar_mensagem(chat_id, "🗑️ *Todos os seus dados foram apagados com sucesso!*", parse_mode="Markdown")
+        elif texto == "/exportar":
+            enviar_mensagem(chat_id, "⏳ Gerando sua planilha...")
+            try:
+                caminho_csv = database.gerar_csv(chat_id)
+                enviar_documento(chat_id, caminho_csv)
+                
+                # Remove a planilha do seu computador para não acumular lixo
+                if os.path.exists(caminho_csv):
+                    os.remove(caminho_csv)
+            except Exception as e:
+                enviar_mensagem(chat_id, f"❌ Erro interno ao gerar o CSV: {e}")
+                
         else:
             enviar_mensagem(chat_id, "Comando não reconhecido. Envie uma nota fiscal ou digite /relatorio.")
 
@@ -176,3 +192,18 @@ def extrair_dados_com_ia(dados_arquivo: bytes, mime_type: str) -> dict:
     blob_arquivo = {"mime_type": mime_type, "data": dados_arquivo}
     resposta = modelo.generate_content([prompt, blob_arquivo])
     return json.loads(resposta.text)
+
+def enviar_documento(chat_id: int, caminho_arquivo: str):
+    """Faz o upload do arquivo gerado para o chat do usuário no Telegram."""
+    url = f"{TELEGRAM_URL}/sendDocument"
+    try:
+        with open(caminho_arquivo, 'rb') as arquivo:
+            payload = {"chat_id": chat_id}
+            files = {"document": arquivo}
+            resposta = requests.post(url, data=payload, files=files)
+            
+            # Se o Telegram recusar o envio, ele avisa no chat
+            if resposta.status_code != 200:
+                enviar_mensagem(chat_id, f"❌ Erro na API do Telegram: {resposta.text}")
+    except Exception as e:
+        enviar_mensagem(chat_id, f"❌ Erro ao tentar ler ou enviar o arquivo: {e}")
