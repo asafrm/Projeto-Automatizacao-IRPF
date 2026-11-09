@@ -30,7 +30,7 @@ modelo = genai.GenerativeModel(
     generation_config={"response_mime_type": "application/json"}
 )
 
-MODO_TESTE = True
+MODO_TESTE = False
 
 # "Estacionamento" temporário: guarda o JSON da IA até o usuário apertar o botão "Salvar"
 despesas_pendentes = {}
