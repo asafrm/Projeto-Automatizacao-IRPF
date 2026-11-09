@@ -303,3 +303,7 @@ def api_relatorio(chat_id: int):
     if not database.verificar_autorizacao(chat_id):
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     return database.gerar_relatorio(chat_id)
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse("static/favicon.png")
