@@ -4,18 +4,23 @@ import google.generativeai as genai
 import json
 import database
 import os
+from dotenv import load_dotenv  # <-- Nova importação
+
+# Carrega as chaves do arquivo .env para a memória do sistema
+load_dotenv()
 
 app = FastAPI()
 database.inicializar_banco()
 
-TOKEN_TELEGRAM = "9219114965:AAEQ5TLAiz2NoQFdaKwKHJuzOejSA2bUjo8"
+# Puxa as senhas de forma invisível através do os.getenv()
+TOKEN_TELEGRAM = os.getenv("TOKEN_TELEGRAM")
 TELEGRAM_URL = f"https://api.telegram.org/bot{TOKEN_TELEGRAM}"
 
-CHAVE_GEMINI = "AQ.Ab8RN6K-Kcb4flwH-8FD-IzqPh6XQh8xc0MdYbHiIMGUQOV64A"
+CHAVE_GEMINI = os.getenv("CHAVE_GEMINI")
 genai.configure(api_key=CHAVE_GEMINI)
 
 modelo = genai.GenerativeModel(
-    model_name="gemini-2.0-flash",
+    model_name="gemini-3.8-flash",
     generation_config={"response_mime_type": "application/json"}
 )
 
@@ -47,7 +52,16 @@ def processar_mensagem(mensagem: dict):
         
         # COMANDOS DE TEXTO
         if texto == "/start":
-            enviar_mensagem(chat_id, "Olá! Envie uma foto ou um PDF de sua nota fiscal.\n\nUse /relatorio para ver o total das suas despesas dedutíveis.")
+            mensagem_boas_vindas = (
+                "Olá! Eu sou o **Leãozito** 🦁, seu assistente automatizado de auditoria para o Imposto de Renda.\n\n"
+                "Estou aqui para organizar a sua vida fiscal. Basta me enviar a **foto ou PDF** de uma nota fiscal ou recibo (saúde, educação, etc.), e eu usarei inteligência artificial para extrair os dados e salvar tudo para você!\n\n"
+                "🛠️ **Meus Comandos:**\n"
+                "📊 /relatorio - Ver o total acumulado por categoria\n"
+                "📥 /exportar - Baixar sua base de dados em planilha Excel\n"
+                "🗑️ /limpar - Apagar todo o seu histórico do sistema\n\n"
+                "🚀 *Para começar, me envie o seu primeiro comprovante!*"
+            )
+            enviar_mensagem(chat_id, mensagem_boas_vindas, parse_mode="Markdown")
         elif texto == "/relatorio":
             relatorio = database.gerar_relatorio(chat_id)
             enviar_mensagem(chat_id, relatorio, parse_mode="Markdown")
