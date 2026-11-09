@@ -1,16 +1,22 @@
-from fastapi import FastAPI, Request, BackgroundTasks
+from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
 import requests
 import google.generativeai as genai
 import json
 import database
 import os
-from dotenv import load_dotenv  # <-- Nova importação
+from dotenv import load_dotenv  
+from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
+from starlette.background import BackgroundTask
+import sqlite3 
+from fastapi.staticfiles import StaticFiles
 
 # Carrega as chaves do arquivo .env para a memória do sistema
 load_dotenv()
 
 app = FastAPI()
 database.inicializar_banco()
+# Permite que o navegador carregue ficheiros da pasta "static" (como o seu style.css)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Puxa as senhas de forma invisível através do os.getenv()
 TOKEN_TELEGRAM = os.getenv("TOKEN_TELEGRAM")
@@ -249,3 +255,47 @@ def enviar_documento(chat_id: int, caminho_arquivo: str):
                 enviar_mensagem(chat_id, f"❌ Erro na API do Telegram: {resposta.text}")
     except Exception as e:
         enviar_mensagem(chat_id, f"❌ Erro ao tentar ler ou enviar o arquivo: {e}")
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def abrir_dashboard():
+    """Abre a interface visual do sistema no navegador."""
+    try:
+        with open("dashboard.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return "<h1>Erro: Arquivo dashboard.html não encontrado.</h1>"
+
+@app.get("/api/despesas")
+def api_listar_despesas():
+    """Fornece os dados do banco em formato JSON para o painel visual."""
+    with sqlite3.connect(database.NOME_BANCO) as conexao:
+        # Permite acessar as colunas pelo nome em vez de índice numérico
+        conexao.row_factory = sqlite3.Row 
+        cursor = conexao.cursor()
+        cursor.execute("SELECT id, chat_id, emissor, documento_emissor, data_emissao, valor_total, categoria FROM despesas")
+        resultados = cursor.fetchall()
+        
+        # Converte as linhas do banco para uma lista de dicionários Python
+        return [dict(linha) for linha in resultados]
+
+
+@app.get("/api/exportar/{chat_id}")
+def api_exportar_xlsx(chat_id: int):
+    """Entrega o XLSX gerado por database.gerar_xlsx() (o mesmo do comando /exportar)."""
+    if not database.verificar_autorizacao(chat_id):
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    caminho = database.gerar_xlsx(chat_id)
+    return FileResponse(
+        caminho,
+        filename=os.path.basename(caminho),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        background=BackgroundTask(os.remove, caminho),  # apaga o arquivo temporário após o envio
+    )
+
+
+@app.get("/api/relatorio/{chat_id}", response_class=PlainTextResponse)
+def api_relatorio(chat_id: int):
+    """Devolve o texto de database.gerar_relatorio() (o mesmo do comando /relatorio)."""
+    if not database.verificar_autorizacao(chat_id):
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    return database.gerar_relatorio(chat_id)

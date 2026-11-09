@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leãozito · Painel IRPF</title>
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+
+<div class="bg" aria-hidden="true"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i><i class="blob b4"></i></div>
+
+<div class="wrap">
+  <header class="glass nav">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
+      </div>
+      <div><b>Leãozito</b><small>Auditoria IRPF</small></div>
+    </div>
+    <div class="nav-actions">
+      <span class="updated"><i class="dot-live" id="live"></i><span id="updated">Carregando…</span></span>
+      <button class="btn icon glass-sm ghost" id="btnRefresh" aria-label="Atualizar dados" title="Atualizar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+      </button>
+      <button class="btn icon glass-sm ghost" id="btnTheme" aria-label="Alternar tema" title="Alternar tema">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <h1>Suas despesas <em>dedutíveis</em></h1>
+      <p>Notas e recibos lidos pelo Leãozito no Telegram, organizados por categoria e período.</p>
+    </div>
+    <div class="filters">
+      <label class="field glass-sm" id="chatField" hidden><span>Usuário (chat_id)</span><select id="chat" aria-label="Usuário"></select></label>
+      <label class="field glass-sm"><span>Período</span><select id="period" aria-label="Período"></select></label>
+    </div>
+  </section>
+
+  <section class="kpis" id="kpis" aria-live="polite"></section>
+
+  <section class="grid2">
+    <article class="glass card">
+      <div class="card-head"><div><h2>Por categoria</h2><p class="hint">Clique para filtrar a tabela</p></div></div>
+      <div id="donutBox"></div>
+    </article>
+    <article class="glass card">
+      <div class="card-head"><div><h2>Evolução mensal</h2><p class="hint">Por data de emissão · clique numa coluna para filtrar o período</p></div></div>
+      <div id="barsBox"></div>
+    </article>
+  </section>
+
+  <section class="glass card" style="margin-top:16px">
+    <div class="card-head"><div><h2>Notas registradas</h2><p class="hint" id="tableHint"></p></div>
+      <div class="head-actions">
+        <button class="btn glass-sm ghost" id="btnReport"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>Relatório</button>
+        <button class="btn glass-sm ghost" id="btnXlsx"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 19h16"/></svg>Excel (.xlsx)</button>
+        <button class="btn primary" id="btnCsv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 19h16"/></svg>CSV</button>
+      </div></div>
+    <div class="toolbar">
+      <label class="search glass-sm">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--ink-faint)" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span class="sr">Buscar</span>
+        <input id="q" type="search" placeholder="Buscar por emissor, CNPJ/CPF ou valor…" autocomplete="off">
+      </label>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr id="thead"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div id="emptyBox"></div>
+    <div class="tfoot" id="tfoot"></div>
+  </section>
+</div>
+
+<dialog id="modal"><div class="glass modal" id="modalBody"></div></dialog>
+<div class="tip glass-sm" id="tip" role="tooltip"></div>
+<div class="toast glass-sm" id="toast" role="status"></div>
+
+<script>
+"use strict";
+/* ================= Utilidades ================= */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const BRL  = new Intl.NumberFormat("pt-BR", {style:"currency", currency:"BRL"});
+const BRL0 = new Intl.NumberFormat("pt-BR", {style:"currency", currency:"BRL", maximumFractionDigits:0});
+const PCT  = new Intl.NumberFormat("pt-BR", {style:"percent", maximumFractionDigits:0});
+const MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+const SEM_DATA = "sem-data";
+
+const ICON = {
+  total:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+  doc:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>',
+  up:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 6-6 4 4 8-8M15 7h6v6"/></svg>',
+  avg:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M4 6h16M4 18h16"/></svg>',
+  inbox:'<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.1z"/></svg>',
+  warn:'<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg>'
+};
+
+function parseDate(s){
+  if(!s) return null;
+  let m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(s);
+  if(m) return new Date(+m[3], +m[2]-1, +m[1]);
+  m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+  return null;
+}
+const monthKey = d => d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}` : SEM_DATA;
+function monthLabel(key, long){
+  if(key === SEM_DATA) return "Sem data";
+  const [y,m] = key.split("-");
+  return long ? `${MESES[+m-1]}/${y}` : `${MESES[+m-1]}/${y.slice(2)}`;
+}
+
+const CAT_COLORS = {"Saúde":"#2f7bff", "Educação":"#ff8a1f", "Outros":"#7b8fb8"};
+const EXTRA = ["#14b8a6","#8b5cf6","#ef4444","#eab308"];
+function catColor(c){
+  if(!CAT_COLORS[c]) CAT_COLORS[c] = EXTRA[(Object.keys(CAT_COLORS).length - 3) % EXTRA.length];
+  return CAT_COLORS[c];
+}
+
+function normalize(r){
+  const v = typeof r.valor_total === "number" ? r.valor_total : parseFloat(r.valor_total);
+  const d = parseDate(r.data_emissao);
+  const cat = (r.categoria || "Outros").toString().trim() || "Outros";
+  catColor(cat);
+  return {
+    id: r.id,
+    chat: r.chat_id ?? null,
+    emissor: (r.emissor || "").trim() || "Emissor não identificado",
+    doc: r.documento_emissor || "",
+    dataStr: r.data_emissao || "",
+    date: d, mes: monthKey(d),
+    valor: Number.isFinite(v) ? v : 0, valorOk: Number.isFinite(v),
+    cat
+  };
+}
+
+/* ================= Estado ================= */
+const state = { all: [], period: "all", cat: "all", q: "", sort: {key:"data", dir:"desc"}, chat: "all", loaded: false, error: null };
+
+/* ================= Dados ================= */
+async function load(silent){
+  const btn = $("#btnRefresh");
+  if(!silent) btn.classList.add("spin");
+  try{
+    const res = await fetch("/api/despesas", {headers:{"Accept":"application/json"}});
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const json = await res.json();
+    state.all = (Array.isArray(json) ? json : []).map(normalize);
+    state.error = null;
+  }catch(e){
+    if(!state.loaded){
+      state.error = "Não foi possível carregar os dados da API.";
+    }else{
+      toast("Falha ao atualizar. Mostrando os últimos dados.");
+    }
+  }
+  state.loaded = true;
+  btn.classList.remove("spin");
+  const live = $("#live");
+  live.classList.toggle("off", !!state.error);
+  $("#updated").textContent = state.error ? "Sem conexão" :
+    "Atualizado às " + new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+  render();
+}
+
+/* ================= Derivados ================= */
+const scoped = () => state.chat === "all" ? state.all : state.all.filter(r => String(r.chat) === String(state.chat));
+const basePeriod = () => state.period === "all" ? scoped() : scoped().filter(r => r.mes === state.period);
+function sumBy(rows, fn){ const m = new Map(); rows.forEach(r => m.set(fn(r), (m.get(fn(r))||0) + r.valor)); return m; }
+function visibleRows(){
+  const q = state.q.trim().toLowerCase();
+  let rows = basePeriod().filter(r => state.cat === "all" || r.cat === state.cat);
+  if(q) rows = rows.filter(r =>
+    r.emissor.toLowerCase().includes(q) || r.doc.toLowerCase().includes(q) ||
+    r.cat.toLowerCase().includes(q) || r.dataStr.includes(q) ||
+    BRL.format(r.valor).includes(q) || String(r.valor).includes(q.replace(",", ".")));
+  const {key, dir} = state.sort, f = dir === "asc" ? 1 : -1;
+  const get = {
+    emissor:r=>r.emissor.toLowerCase(), doc:r=>r.doc, cat:r=>r.cat.toLowerCase(),
+    data:r=>r.date ? r.date.getTime() : -Infinity, valor:r=>r.valor
+  }[key];
+  return rows.slice().sort((a,b) => {
+    const x = get(a), y = get(b);
+    return (x < y ? -1 : x > y ? 1 : 0) * f || (b.id - a.id);
+  });
+}
+
+/* ================= Render ================= */
+function render(){
+  renderChat(); renderPeriod(); renderKpis(); renderDonut(); renderBars(); renderChips(); renderTable();
+}
+
+function renderChat(){
+  const ids = [...new Set(state.all.map(r => r.chat).filter(v => v != null))].sort((a,b) => a - b);
+  if(state.chat !== "all" && !ids.map(String).includes(String(state.chat))) state.chat = "all";
+  $("#chatField").hidden = ids.length < 2;
+  const sel = $("#chat");
+  sel.innerHTML = `<option value="all">Todos</option>` + ids.map(id => `<option value="${esc(id)}">${esc(id)}</option>`).join("");
+  sel.value = String(state.chat);
+}
+
+function renderPeriod(){
+  const keys = [...new Set(scoped().map(r => r.mes))].sort().reverse();
+  if(state.period !== "all" && !keys.includes(state.period)) state.period = "all";
+  const sel = $("#period");
+  sel.innerHTML = `<option value="all">Todo o período</option>` +
+    keys.map(k => `<option value="${k}">${k === SEM_DATA ? "Sem data" : monthLabel(k, true)}</option>`).join("");
+  sel.value = state.period;
+}
+
+const counters = new WeakMap();
+function countTo(el, to, fmt){
+  const from = counters.get(el) ?? 0; counters.set(el, to);
+  if(matchMedia("(prefers-reduced-motion:reduce)").matches || from === to){ el.textContent = fmt(to); return; }
+  const t0 = performance.now(), dur = 650;
+  (function step(t){
+    const p = Math.min((t - t0)/dur, 1), e = 1 - Math.pow(1-p, 3);
+    el.textContent = fmt(from + (to - from) * e);
+    if(p < 1) requestAnimationFrame(step);
+  })(t0);
+}
+
+function renderKpis(){
+  const box = $("#kpis");
+  if(state.error){ box.innerHTML = ""; return; }
+  if(!state.loaded){ return; }
+  const rows = basePeriod();
+  const total = rows.reduce((s,r) => s + r.valor, 0);
+  const n = rows.length;
+  const max = rows.reduce((a,r) => (!a || r.valor > a.valor) ? r : a, null);
+  const avg = n ? total / n : 0;
+  const when = state.period === "all" ? "em todo o período" : "em " + monthLabel(state.period, true);
+
+  box.innerHTML = `
+    <div class="glass kpi hero-kpi"><div class="label"><i>${ICON.total}</i>Total de despesas</div>
+      <div class="value" data-n="total">—</div><div class="sub">${n} ${n===1?"nota":"notas"} ${when}</div></div>
+    <div class="glass kpi"><div class="label"><i>${ICON.doc}</i>Notas</div>
+      <div class="value" data-n="count">—</div><div class="sub">${new Set(rows.map(r=>r.emissor)).size} emissores</div></div>
+    <div class="glass kpi warm"><div class="label"><i>${ICON.up}</i>Maior despesa</div>
+      <div class="value" data-n="max">—</div><div class="sub" title="${esc(max?.emissor||"")}">${esc(max ? max.emissor : "Sem dados")}</div></div>
+    <div class="glass kpi"><div class="label"><i>${ICON.avg}</i>Ticket médio</div>
+      <div class="value" data-n="avg">—</div><div class="sub">por nota</div></div>`;
+  countTo(box.querySelector('[data-n="total"]'), total, v => BRL.format(v));
+  countTo(box.querySelector('[data-n="count"]'), n, v => String(Math.round(v)));
+  countTo(box.querySelector('[data-n="max"]'),   max ? max.valor : 0, v => BRL.format(v));
+  countTo(box.querySelector('[data-n="avg"]'),   avg, v => BRL.format(v));
+}
+
+function renderDonut(){
+  const box = $("#donutBox");
+  if(!state.loaded){ box.innerHTML = `<div class="skel" style="height:200px"></div>`; return; }
+  const rows = basePeriod();
+  const totals = [...sumBy(rows, r => r.cat)].filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
+  const total = totals.reduce((s,[,v]) => s + v, 0);
+  if(!total){ box.innerHTML = `<div class="empty" style="padding:30px 0">Sem valores neste período.</div>`; return; }
+
+  const R = 70, C = 2*Math.PI*R, gap = totals.length > 1 ? 3 : 0; let off = 0;
+  const segs = totals.map(([cat, v]) => {
+    const len = v/total*C, dash = Math.max(len - gap, .01);
+    const s = `<circle class="seg" cx="100" cy="100" r="${R}" fill="none" stroke="${catColor(cat)}" stroke-width="22"
+      stroke-dasharray="${dash} ${C-dash}" stroke-dashoffset="${-off}" transform="rotate(-90 100 100)"
+      data-cat="${esc(cat)}" data-tip="${esc(cat)}<br><b>${BRL.format(v)}</b> · ${PCT.format(v/total)}"/>`;
+    off += len; return s;
+  }).join("");
+
+  box.innerHTML = `<div class="donut-box">
+    <svg class="donut" viewBox="0 0 200 200" role="img" aria-label="Despesas por categoria">
+      <circle class="track" cx="100" cy="100" r="${R}" fill="none" stroke-width="22"/>${segs}
+      <text x="100" y="98" text-anchor="middle" class="d-val">${BRL0.format(total)}</text>
+      <text x="100" y="116" text-anchor="middle" class="d-lab">TOTAL</text>
+    </svg>
+    <div class="legend">${totals.map(([cat,v]) => `
+      <button class="leg ${state.cat===cat?"on":""}" style="--c:${catColor(cat)}" data-cat="${esc(cat)}">
+        <i></i><span><b>${esc(cat)}</b><small>${PCT.format(v/total)} do total</small></span><span class="amt">${BRL.format(v)}</span>
+      </button>`).join("")}</div></div>`;
+}
+
+function renderBars(){
+  const box = $("#barsBox");
+  if(!state.loaded){ box.innerHTML = `<div class="skel" style="height:236px"></div>`; return; }
+  const byMonth = new Map();
+  scoped().forEach(r => {
+    if(!byMonth.has(r.mes)) byMonth.set(r.mes, new Map());
+    const m = byMonth.get(r.mes); m.set(r.cat, (m.get(r.cat)||0) + r.valor);
+  });
+  let keys = [...byMonth.keys()].filter(k => k !== SEM_DATA).sort().slice(-12);
+  if(byMonth.has(SEM_DATA)) keys.push(SEM_DATA);
+  if(!keys.length){ box.innerHTML = `<div class="empty" style="padding:30px 0">Sem dados para exibir.</div>`; return; }
+
+  const totalOf = k => [...byMonth.get(k).values()].reduce((a,b) => a+b, 0);
+  const max = Math.max(...keys.map(totalOf), 1);
+  box.innerHTML = `<div class="bars">${keys.map((k, i) => {
+    const m = byMonth.get(k), tot = totalOf(k);
+    const parts = [...m].filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
+    const cls = state.period === "all" ? "" : (state.period === k ? "sel" : "dim");
+    const tip = `<b>${monthLabel(k,true)}</b><br>` + parts.map(([c,v]) => `${esc(c)}: ${BRL.format(v)}`).join("<br>") + `<br><b>Total: ${BRL.format(tot)}</b>`;
+    return `<button class="col ${cls}" data-period="${k}" data-tip="${esc(tip)}" aria-label="${monthLabel(k,true)}: ${BRL.format(tot)}">
+      <div class="stack" style="height:${Math.max(tot/max*100, 2)}%;flex:none;margin-top:auto">
+        ${parts.map(([c,v]) => `<div class="seg" style="height:${v/tot*100}%;background:linear-gradient(180deg,${catColor(c)},color-mix(in srgb,${catColor(c)} 78%,#000));animation-delay:${i*45}ms"></div>`).join("")}
+      </div><span class="m">${monthLabel(k)}</span></button>`;
+  }).join("")}</div>`;
+}
+
+function renderChips(){
+  const cats = [...new Set(basePeriod().map(r => r.cat))].sort();
+  if(state.cat !== "all" && !cats.includes(state.cat)) state.cat = "all";
+  $("#chips").innerHTML =
+    `<button class="chip ${state.cat==="all"?"on":""}" data-cat="all">Todas</button>` +
+    cats.map(c => `<button class="chip ${state.cat===c?"on":""}" style="--c:${catColor(c)}" data-cat="${esc(c)}"><i></i>${esc(c)}</button>`).join("");
+}
+
+const COLS = [
+  {k:"emissor", t:"Emissor"}, {k:"doc", t:"CNPJ/CPF"}, {k:"data", t:"Emissão"},
+  {k:"cat", t:"Categoria"}, {k:"valor", t:"Valor", r:true}
+];
+function renderTable(){
+  const th = $("#thead"), tb = $("#tbody"), empty = $("#emptyBox"), foot = $("#tfoot");
+  th.innerHTML = COLS.map(c => {
+    const on = state.sort.key === c.k;
+    return `<th class="${c.r?"r":""}" ${on?`aria-sort="${state.sort.dir==="asc"?"ascending":"descending"}"`:""}>
+      <button data-sort="${c.k}">${c.t}<span class="arr">${on && state.sort.dir==="asc" ? "▲" : "▼"}</span></button></th>`;
+  }).join("");
+
+  if(!state.loaded){
+    tb.innerHTML = Array.from({length:5}, () => `<tr><td colspan="5"><div class="skel" style="height:20px"></div></td></tr>`).join("");
+    empty.innerHTML = foot.innerHTML = ""; return;
+  }
+  if(state.error){
+    tb.innerHTML = "";
+    empty.innerHTML = `<div class="empty"><span class="ico" style="background:var(--orange-100);color:var(--orange-600)">${ICON.warn}</span>
+      <h3>Não foi possível carregar</h3><p>${esc(state.error)} Verifique se o servidor está no ar.</p>
+      <button class="btn primary" id="btnRetry">Tentar novamente</button></div>`;
+    foot.innerHTML = ""; $("#tableHint").textContent = ""; return;
+  }
+
+  const rows = visibleRows();
+  $("#tableHint").textContent = state.period === "all" ? "Todas as notas salvas" : "Notas de " + monthLabel(state.period, true);
+
+  tb.innerHTML = rows.map(r => `
+    <tr tabindex="0" data-id="${r.id}">
+      <td class="emissor"><span title="${esc(r.emissor)}">${esc(r.emissor)}</span></td>
+      <td class="doc">${esc(r.doc) || "—"}</td>
+      <td class="data">${esc(r.dataStr) || "—"}</td>
+      <td class="cat"><span class="pill" style="--c:${catColor(r.cat)}"><i></i>${esc(r.cat)}</span></td>
+      <td class="valor r">${r.valorOk ? BRL.format(r.valor) : "—"}</td>
+    </tr>`).join("");
+
+  if(!rows.length){
+    const none = !state.all.length;
+    empty.innerHTML = `<div class="empty"><span class="ico">${ICON.inbox}</span>
+      <h3>${none ? "Nenhuma nota registrada ainda" : "Nada encontrado"}</h3>
+      <p>${none ? "Envie a foto ou o PDF de uma nota ao Leãozito no Telegram e confirme em “Salvar”." : "Ajuste a busca, a categoria ou o período."}</p></div>`;
+    foot.innerHTML = "";
+  }else{
+    empty.innerHTML = "";
+    const sum = rows.reduce((s,r) => s + r.valor, 0);
+    foot.innerHTML = `<span>Mostrando <b>${rows.length}</b> de ${basePeriod().length} notas</span><span>Soma do filtro: <b>${BRL.format(sum)}</b></span>`;
+  }
+}
+
+/* ================= Interações ================= */
+$("#period").addEventListener("change", e => { state.period = e.target.value; render(); });
+$("#q").addEventListener("input", e => { state.q = e.target.value; renderTable(); });
+$("#btnRefresh").addEventListener("click", () => load(false));
+$("#chat").addEventListener("change", e => { state.chat = e.target.value; render(); });
+$("#btnCsv").addEventListener("click", exportCsv);
+$("#btnXlsx").addEventListener("click", exportXlsx);
+$("#btnReport").addEventListener("click", openReport);
+$("#btnTheme").addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try{ localStorage.setItem("leaozito-theme", next); }catch(e){}
+});
+
+document.addEventListener("click", e => {
+  const t = e.target;
+  const cat = t.closest("[data-cat]");
+  if(cat && (cat.matches(".chip,.leg,.seg"))){
+    const c = cat.dataset.cat;
+    state.cat = (state.cat === c || c === "all") ? "all" : c;
+    renderChips(); renderTable(); renderDonut(); return;
+  }
+  const col = t.closest(".col");
+  if(col){ state.period = state.period === col.dataset.period ? "all" : col.dataset.period; render(); return; }
+  const sort = t.closest("[data-sort]");
+  if(sort){
+    const k = sort.dataset.sort;
+    state.sort = state.sort.key === k ? {key:k, dir: state.sort.dir==="asc"?"desc":"asc"} : {key:k, dir: (k==="valor"||k==="data")?"desc":"asc"};
+    renderTable(); return;
+  }
+  if(t.closest("#btnRetry")){ load(false); return; }
+  const tr = t.closest("tbody tr[data-id]");
+  if(tr) openModal(+tr.dataset.id);
+});
+document.addEventListener("keydown", e => {
+  if(e.key === "Enter" && e.target.matches("tbody tr[data-id]")) openModal(+e.target.dataset.id);
+});
+
+/* Tooltip */
+const tip = $("#tip");
+document.addEventListener("pointermove", e => {
+  const el = e.target.closest && e.target.closest("[data-tip]");
+  if(!el){ tip.classList.remove("on"); return; }
+  tip.innerHTML = el.dataset.tip;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - w - 10) + "px";
+  tip.style.top  = Math.max(e.clientY - h - 12, 8) + "px";
+  tip.classList.add("on");
+});
+document.addEventListener("pointerleave", () => tip.classList.remove("on"));
+
+/* Modal de detalhes */
+const modal = $("#modal");
+function openModal(id){
+  const r = state.all.find(x => x.id === id); if(!r) return;
+  $("#modalBody").innerHTML = `<div class="modal">
+    <div class="top"><span class="pill" style="--c:${catColor(r.cat)}"><i></i>${esc(r.cat)}</span>
+      <button class="btn icon glass-sm ghost" id="mClose" aria-label="Fechar" style="width:36px;height:36px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <h3>${esc(r.emissor)}</h3>
+    <div class="big">${r.valorOk ? BRL.format(r.valor) : "—"}</div>
+    <dl class="dl">
+      <dt>CNPJ/CPF</dt><dd>${esc(r.doc) || "—"}</dd>
+      <dt>Data de emissão</dt><dd>${esc(r.dataStr) || "—"}</dd>
+      <dt>Categoria</dt><dd>${esc(r.cat)}</dd>
+      <dt>ID da nota</dt><dd>#${esc(r.id)}</dd>
+    </dl>
+    <div class="actions">${r.doc ? `<button class="btn glass-sm ghost" id="mCopy">Copiar CNPJ/CPF</button>` : ""}<button class="btn primary" id="mOk">Fechar</button></div></div>`;
+  $("#mClose").onclick = $("#mOk").onclick = () => modal.close();
+  const cp = $("#mCopy");
+  if(cp) cp.onclick = async () => {
+    try{ await navigator.clipboard.writeText(r.doc); toast("CNPJ/CPF copiado"); }catch(e){ toast("Não foi possível copiar"); }
+  };
+  modal.showModal();
+}
+modal.addEventListener("click", e => { if(e.target === modal) modal.close(); });
+
+/* Exportar CSV (abre certo no Excel pt-BR) */
+function exportCsv(){
+  const rows = visibleRows();
+  if(!rows.length){ toast("Nada para exportar"); return; }
+  const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = [["Emissor","CNPJ/CPF","Data de emissão","Categoria","Valor (R$)"].map(q).join(";")]
+    .concat(rows.map(r => [q(r.emissor), q(r.doc), q(r.dataStr), q(r.cat), q(r.valor.toFixed(2).replace(".", ","))].join(";")));
+  const blob = new Blob(["\ufeff" + lines.join("\r\n")], {type:"text/csv;charset=utf-8"});
+  const a = Object.assign(document.createElement("a"), {href:URL.createObjectURL(blob), download:`despesas_irpf_${new Date().toISOString().slice(0,10)}.csv`});
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(`${rows.length} notas exportadas`);
+}
+
+/* Ligações com database.py via API (gerar_xlsx e gerar_relatorio) */
+function currentChat(){
+  if(state.chat !== "all") return state.chat;
+  const ids = [...new Set(state.all.map(r => r.chat).filter(v => v != null))];
+  return ids.length === 1 ? ids[0] : null;
+}
+async function exportXlsx(){
+  const id = currentChat();
+  if(id == null){ toast("Selecione um usuário para exportar"); return; }
+  const btn = $("#btnXlsx"); btn.disabled = true;
+  try{
+    const res = await fetch(`/api/exportar/${encodeURIComponent(id)}`);
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const blob = await res.blob();
+    const a = Object.assign(document.createElement("a"), {href:URL.createObjectURL(blob), download:`despesas_irpf_${id}.xlsx`});
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast("Planilha gerada");
+  }catch(e){ toast("Não foi possível gerar a planilha"); }
+  finally{ btn.disabled = false; }
+}
+async function openReport(){
+  const id = currentChat();
+  if(id == null){ toast("Selecione um usuário para ver o relatório"); return; }
+  const btn = $("#btnReport"); btn.disabled = true;
+  try{
+    const res = await fetch(`/api/relatorio/${encodeURIComponent(id)}`);
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const txt = (await res.text()).replace(/\*/g, "");
+    $("#modalBody").innerHTML = `<div class="modal">
+      <div class="top"><h3 style="margin:0">Relatório para o IRPF</h3>
+        <button class="btn icon glass-sm ghost" id="mClose" aria-label="Fechar" style="width:36px;height:36px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <pre class="report">${esc(txt)}</pre>
+      <div class="actions"><button class="btn primary" id="mOk">Fechar</button></div></div>`;
+    $("#mClose").onclick = $("#mOk").onclick = () => modal.close();
+    modal.showModal();
+  }catch(e){ toast("Não foi possível carregar o relatório"); }
+  finally{ btn.disabled = false; }
+}
+
+let toastTimer;
+function toast(msg){
+  const t = $("#toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), 2400);
+}
+
+/* ================= Início ================= */
+(function init(){
+  let theme = null;
+  try{ theme = localStorage.getItem("leaozito-theme"); }catch(e){}
+  document.documentElement.dataset.theme = theme || (matchMedia("(prefers-color-scheme:dark)").matches ? "dark" : "light");
+  render();      // esqueletos
+  load(false);
+  setInterval(() => { if(!document.hidden && !modal.open) load(true); }, 60000);
+})();
+</script>
+</body>
+</html>
