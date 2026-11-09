@@ -46,11 +46,40 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
 
 def processar_mensagem(mensagem: dict):
     chat_id = mensagem["chat"]["id"]
+    
+    # Extrai o texto se existir (usado para comandos e senhas)
+    texto = mensagem.get("text", "")
 
-    if "text" in mensagem:
-        texto = mensagem["text"]
+    # 1. VERIFICAÇÃO DE CADASTRO (O Porteiro)
+    # Se a pessoa mandar o comando /registrar com a senha correta
+    if texto.startswith("/registrar"):
+        partes = texto.split()
+        senha_correta = os.getenv("SENHA_CADASTRO")
         
-        # COMANDOS DE TEXTO
+        if len(partes) == 2 and partes[1] == senha_correta:
+            database.registrar_usuario(chat_id)
+            enviar_mensagem(chat_id, "✅ *Cadastro realizado com sucesso!*\n\nVocê já pode enviar suas notas fiscais e recibos para auditoria.", parse_mode="Markdown")
+            mensagem_boas_vindas = (
+                "Olá! Eu sou o **Leãozito** 🦁, seu assistente automatizado de auditoria para o Imposto de Renda.\n\n"
+                "Estou aqui para organizar a sua vida fiscal. Basta me enviar a **foto ou PDF** de uma nota fiscal ou recibo (saúde, educação, etc.), e eu usarei inteligência artificial para extrair os dados e salvar tudo para você!\n\n"
+                "🛠️ **Meus Comandos:**\n"
+                "📊 /relatorio - Ver o total acumulado por categoria\n"
+                "📥 /exportar - Baixar sua base de dados em planilha Excel\n"
+                "🗑️ /limpar - Apagar todo o seu histórico do sistema\n\n"
+                "🚀 *Para começar, me envie o seu primeiro comprovante!*"
+            ) 
+            enviar_mensagem(chat_id, mensagem_boas_vindas, parse_mode="Markdown")
+        else:
+            enviar_mensagem(chat_id, "❌ *Senha incorreta ou formato inválido.*\nPara acessar, digite: `/registrar SuaSenhaAqui`", parse_mode="Markdown")
+        return
+
+    # Bloqueia qualquer pessoa que não esteja cadastrada no banco de dados
+    if not database.verificar_autorizacao(chat_id):
+        enviar_mensagem(chat_id, "🔒 *Acesso Negado.*\n\nVocê não está cadastrado neste sistema.\nSe você tem um convite, libere seu acesso digitando:\n`/registrar SenhaDeAcesso`", parse_mode="Markdown")
+        return
+
+    # 2. FLUXO NORMAL (Só roda se o usuário passou pelo porteiro)
+    if texto:
         if texto == "/start":
             mensagem_boas_vindas = (
                 "Olá! Eu sou o **Leãozito** 🦁, seu assistente automatizado de auditoria para o Imposto de Renda.\n\n"
@@ -62,26 +91,27 @@ def processar_mensagem(mensagem: dict):
                 "🚀 *Para começar, me envie o seu primeiro comprovante!*"
             )
             enviar_mensagem(chat_id, mensagem_boas_vindas, parse_mode="Markdown")
+        
         elif texto == "/relatorio":
             relatorio = database.gerar_relatorio(chat_id)
             enviar_mensagem(chat_id, relatorio, parse_mode="Markdown")
+            
         elif texto == "/limpar":
             database.limpar_dados(chat_id)
-            enviar_mensagem(chat_id, "🗑️ *Todos os seus dados foram apagados com sucesso!*", parse_mode="Markdown")
+            enviar_mensagem(chat_id, "🗑️ *Todos os seus dados de despesas foram apagados com sucesso!*", parse_mode="Markdown")
+            
         elif texto == "/exportar":
             enviar_mensagem(chat_id, "⏳ Gerando sua planilha Excel...")
             try:
-                # Chama a nova função XLSX
                 caminho_xlsx = database.gerar_xlsx(chat_id)
                 enviar_documento(chat_id, caminho_xlsx)
-                
-                # Remove a planilha do seu computador para não acumular lixo
                 if os.path.exists(caminho_xlsx):
                     os.remove(caminho_xlsx)
             except Exception as e:
                 enviar_mensagem(chat_id, f"❌ Erro interno ao gerar o XLSX: {e}")
                 
-        else:
+        # Se for um texto que não é comando, avisa
+        elif not texto.startswith("/"):
             enviar_mensagem(chat_id, "Comando não reconhecido. Envie uma nota fiscal ou digite /relatorio.")
 
     elif "photo" in mensagem or "document" in mensagem:
@@ -102,7 +132,6 @@ def processar_mensagem(mensagem: dict):
             dados_arquivo = baixar_arquivo_telegram(file_id)
             dados_json = extrair_dados_com_ia(dados_arquivo, mime_type)
 
-            # Coloca os dados na fila de espera associados ao chat_id do usuário
             despesas_pendentes[chat_id] = dados_json
 
             valor_num = dados_json.get("valor_total")
@@ -116,7 +145,6 @@ def processar_mensagem(mensagem: dict):
                 f"Deseja salvar esta nota no banco de dados?"
             )
             
-            # Monta os botões que aparecerão embaixo da mensagem
             botoes = {
                 "inline_keyboard": [
                     [
@@ -125,7 +153,6 @@ def processar_mensagem(mensagem: dict):
                     ]
                 ]
             }
-            
             enviar_mensagem(chat_id, resposta, parse_mode="Markdown", reply_markup=botoes)
 
         except Exception as e:

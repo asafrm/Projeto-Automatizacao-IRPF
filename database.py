@@ -20,7 +20,34 @@ def inicializar_banco():
                 data_registro TEXT
             )
         """)
+        # Tabela de Usuários Autorizados
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                chat_id INTEGER PRIMARY KEY,
+                data_cadastro TEXT
+            )
+        """)
         conexao.commit()
+
+def registrar_usuario(chat_id: int):
+    """Salva o ID do usuário no banco de dados. Ignora se já existir."""
+    with sqlite3.connect(NOME_BANCO) as conexao:
+        cursor = conexao.cursor()
+        data_atual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        # INSERT OR IGNORE evita erros caso o usuário tente se cadastrar duas vezes
+        cursor.execute("""
+            INSERT OR IGNORE INTO usuarios (chat_id, data_cadastro)
+            VALUES (?, ?)
+        """, (chat_id, data_atual))
+        conexao.commit()
+
+def verificar_autorizacao(chat_id: int) -> bool:
+    """Retorna True se o usuário estiver cadastrado, e False se não estiver."""
+    with sqlite3.connect(NOME_BANCO) as conexao:
+        cursor = conexao.cursor()
+        cursor.execute("SELECT 1 FROM usuarios WHERE chat_id = ?", (chat_id,))
+        resultado = cursor.fetchone()
+        return resultado is not None
 
 def salvar_despesa(chat_id: int, dados_json: dict):
     """Insere o JSON extraído na tabela de despesas."""
